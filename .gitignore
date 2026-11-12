@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Local application data
+data/
+*.log
+
+# Build output
+TaskDraw.exe
+desktop/bin/
+desktop/obj/

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TaskDraw · 挂起列表</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23b64a32'/%3E%3Cpath d='M9 16.5l4.5 4.5L23 11.5' stroke='%23fff' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/drawer.css">
+</head>
+<body>
+  <div class="drawer">
+    <header class="head" id="drag-head">
+      <div class="grip" aria-hidden="true"><span></span></div>
+      <div class="head-row">
+        <div class="head-text">
+          <p class="eyebrow">今天</p>
+          <h1>挂起列表 <span id="date-label">11月12日 · 周四</span></h1>
+        </div>
+        <div class="head-actions">
+          <button class="icon-btn" id="open-main" type="button" title="打开主窗口" aria-label="打开主窗口">
+            <svg viewBox="0 0 20 20" fill="none"><rect x="3.2" y="4.2" width="13.6" height="11.6" rx="2.4" stroke="currentColor" stroke-width="1.5"/><path d="M3.4 7.6h13.2" stroke="currentColor" stroke-width="1.5"/><rect x="5.1" y="5.1" width="1.8" height="1.8" rx="0.4" fill="currentColor"/></svg>
+          </button>
+          <button class="icon-btn" id="collapse-drawer" type="button" title="收起到右侧" aria-label="收起到右侧">
+            <svg viewBox="0 0 20 20" fill="none"><path d="M7.5 5.5l4.5 4.5-4.5 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M14.8 4.8v10.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </button>
+          <button class="icon-btn danger" id="close-app" type="button" title="退出 TaskDraw" aria-label="退出 TaskDraw">
+            <svg viewBox="0 0 20 20" fill="none"><path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="summary-row">
+        <span class="summary-left">
+          <span class="ratio-badge" id="ratio-badge">0/0</span>
+          <span id="summary-text">正在载入…</span>
+        </span>
+        <span id="sync-text">同步中</span>
+      </div>
+      <div class="progress" aria-hidden="true"><span id="progress-bar"></span></div>
+    </header>
+
+    <form class="add-form" id="add-form" autocomplete="off">
+      <input id="new-title" type="text" maxlength="120" placeholder="添加今天的任务…" aria-label="添加今天的任务">
+      <button class="add-btn" type="submit" aria-label="添加任务">
+        <svg viewBox="0 0 20 20" fill="none"><path d="M10 4.5v11M4.5 10h11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+    </form>
+
+    <div class="task-list" id="task-list" role="list" aria-live="polite"></div>
+
+    <footer class="drawer-foot">
+      <span>关闭退出程序 · <kbd>Esc</kbd> 收起贴边</span>
+    </footer>
+
+    <button class="collapsed-tab" id="collapsed-tab" type="button" title="展开挂起列表" aria-label="展开挂起列表">
+      <span class="ct-rail" aria-hidden="true"><span id="collapsed-bar"></span></span>
+      <span class="ct-ratio" id="collapsed-ratio">0/0</span>
+    </button>
+  </div>
+
+  <script src="/static/drawer.js"></script>
+</body>
+</html>

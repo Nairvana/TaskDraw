@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TaskDraw · 每日任务</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23b64a32'/%3E%3Cpath d='M9 16.5l4.5 4.5L23 11.5' stroke='%23fff' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="app">
+    <div class="calendar-column">
+    <aside class="panel calendar-panel">
+      <header class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.2 4.2L19 7.4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <div class="brand-text">
+          <span class="brand-name">TaskDraw</span>
+          <span class="brand-tagline">把每一天画清楚</span>
+        </div>
+        <button class="icon-btn sound-toggle" id="sound-toggle" type="button" aria-pressed="true" aria-label="关闭音效" title="关闭音效"></button>
+      </header>
+
+      <div class="month-nav">
+        <h2 id="month-label">2026 年 11 月</h2>
+        <div class="pick-controls" id="pick-controls" hidden>
+          <span id="pick-text" aria-live="polite">点选日期</span>
+          <button class="pick-confirm" id="pick-confirm" type="button" hidden>确定</button>
+          <button class="pick-cancel" id="pick-cancel" type="button">取消</button>
+        </div>
+        <div class="month-controls" id="month-controls">
+          <button class="icon-btn" id="prev-month" type="button" aria-label="上个月">
+            <svg viewBox="0 0 20 20" fill="none"><path d="M12.5 5l-5 5 5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button class="today-chip" id="calendar-today" type="button">今天</button>
+          <button class="icon-btn" id="next-month" type="button" aria-label="下个月">
+            <svg viewBox="0 0 20 20" fill="none"><path d="M7.5 5l5 5-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="weekday-row" aria-hidden="true">
+        <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+      </div>
+
+      <div class="calendar-grid" id="calendar-grid" role="group" aria-label="月历"></div>
+
+      <div class="day-bubble" id="day-bubble" aria-hidden="true" hidden>
+        <span id="day-bubble-text">(´･ω･`)</span>
+      </div>
+
+      <div class="legend" aria-hidden="true">
+        <span><i class="dot dot-done"></i>已完成</span>
+        <span><i class="dot dot-open"></i>待完成</span>
+        <span><i class="dot dot-late"></i>未完成</span>
+      </div>
+
+      <section class="month-stats" aria-label="本月统计">
+        <div class="ms-head">
+          <span>本月完成率</span>
+          <strong id="month-rate">—</strong>
+        </div>
+        <div class="ms-bar"><span id="month-bar"></span></div>
+        <p class="ms-detail" id="month-detail">本月还没有任务</p>
+      </section>
+    </aside>
+
+    <button class="plan-entry" id="plan-entry" type="button">
+      <span class="plan-entry-mark" id="plan-entry-mark" aria-hidden="true">
+        <svg viewBox="0 0 20 20" fill="none"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h3l1.6 1.8H15.5A1.5 1.5 0 0 1 17 8.3v6.2a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 14.5v-8z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+      </span>
+      <span class="plan-entry-text">
+        <strong id="plan-entry-title">长期计划</strong>
+        <small id="plan-entry-sub">把分散到日期的小计划收进大计划</small>
+      </span>
+      <span class="plan-entry-go" id="plan-entry-go" aria-hidden="true">
+        <svg viewBox="0 0 20 20" fill="none"><path d="M4.5 10h10M11 6.5l3.5 3.5-3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+    </button>
+    </div>
+
+    <main class="panel day-panel">
+      <header class="day-head">
+        <div class="day-head-text">
+          <p class="eyebrow" id="day-eyebrow">今天</p>
+          <div class="day-title-row">
+            <h1 id="day-title">11月12日 · 周三</h1>
+            <div class="day-progress is-empty" id="day-progress" role="group" aria-label="当日完成进度">
+              <div class="dp-track" aria-hidden="true"><span id="day-bar"></span></div>
+              <span class="dp-ratio" id="day-ratio">0/0</span>
+            </div>
+          </div>
+          <div class="day-sub-row">
+            <p class="day-summary" id="day-summary">还没有任务</p>
+            <div class="day-head-actions">
+              <button class="btn-ghost desktop-only" id="suspend-btn" type="button" title="收起主窗口，挂出今天的任务">
+                <svg viewBox="0 0 20 20" fill="none"><path d="M3.5 6.5h13M3.5 10h8M3.5 13.5h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                挂起
+              </button>
+              <button class="btn-ghost" id="day-today" type="button">回到今天</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <form class="composer" id="composer" autocomplete="off">
+        <input id="new-title" type="text" maxlength="120" placeholder="添加任务，回车保存…" aria-label="新任务内容">
+        <button class="notes-toggle" id="notes-toggle" type="button" aria-expanded="false" aria-controls="new-notes-wrap">备注</button>
+        <button class="add-btn" id="add-btn" type="submit" aria-label="添加任务">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M10 4.5v11M4.5 10h11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </form>
+      <div class="composer-notes" id="new-notes-wrap" hidden>
+        <textarea id="new-notes" rows="2" maxlength="5000" placeholder="备注（可选）：补充细节、链接或检查项"></textarea>
+      </div>
+
+      <div class="task-scroll">
+        <div id="task-list" aria-live="polite"></div>
+      </div>
+
+      <footer class="day-foot">
+        <span class="foot-hint"><kbd>/</kbd> 新建</span>
+        <span class="foot-hint"><kbd>T</kbd> 今天</span>
+        <span class="foot-hint foot-drag">
+          <svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 3.5h6M3 6h6M3 8.5h6" stroke="currentColor" stroke-width="1.4"/></svg>
+          拖动排序
+        </span>
+        <span class="foot-local">数据仅存本机</span>
+      </footer>
+    </main>
+
+    <main class="panel plan-panel" id="plan-panel" hidden>
+      <header class="day-head plan-head">
+        <div class="day-head-text">
+          <p class="eyebrow">长期计划</p>
+          <div class="day-title-row">
+            <h1>计划总览</h1>
+          </div>
+          <div class="day-sub-row">
+            <p class="day-summary" id="plan-summary">还没有长期计划</p>
+            <div class="day-head-actions">
+              <button class="btn-ghost" id="plan-back" type="button">
+                <svg viewBox="0 0 20 20" fill="none"><path d="M15.5 10h-11M8 6.5L4.5 10 8 13.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                返回任务
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <form class="composer plan-composer" id="plan-composer" autocomplete="off">
+        <input id="plan-title" type="text" maxlength="120" placeholder="新建大计划，回车保存…" aria-label="新计划名称">
+        <button class="add-btn" id="plan-add-btn" type="submit" aria-label="添加计划">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M10 4.5v11M4.5 10h11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </form>
+
+      <div class="plan-scroll">
+        <div id="plan-list" aria-live="polite"></div>
+      </div>
+
+      <footer class="day-foot">
+        <span class="foot-hint"><kbd>/</kbd> 新建计划</span>
+        <span class="foot-hint">计划可像文件夹一样嵌套</span>
+        <span class="foot-local">占比按子计划完成数统计</span>
+      </footer>
+    </main>
+
+    <main class="panel plan-panel plan-detail-panel" id="plan-detail-panel" hidden>
+      <header class="day-head plan-head">
+        <div class="day-head-text">
+          <p class="eyebrow">长期计划</p>
+          <div class="day-title-row">
+            <h1 id="plan-detail-title">计划</h1>
+            <span class="plan-detail-pct" id="plan-detail-pct">0%</span>
+          </div>
+          <div class="day-sub-row">
+            <p class="day-summary" id="plan-detail-summary"></p>
+            <div class="day-head-actions">
+              <button class="btn-ghost" id="plan-detail-add" type="button">添加子计划</button>
+              <button class="btn-ghost" id="plan-detail-edit" type="button">编辑计划</button>
+              <button class="btn-ghost" id="plan-detail-back" type="button">
+                <svg viewBox="0 0 20 20" fill="none"><path d="M15.5 10h-11M8 6.5L4.5 10 8 13.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                返回上一级
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div class="plan-detail-meter" aria-hidden="true"><i id="plan-detail-meter"></i></div>
+
+      <div class="plan-scroll">
+        <div id="plan-detail-list" aria-live="polite"></div>
+      </div>
+
+      <footer class="day-foot">
+        <span class="foot-hint">点计划可继续下钻</span>
+        <span class="foot-local">占比按子计划完成数统计</span>
+      </footer>
+    </main>
+  </div>
+
+  <dialog id="edit-dialog" aria-labelledby="edit-heading">
+    <form id="edit-form">
+      <div class="modal-head">
+        <h2 id="edit-heading">编辑任务</h2>
+        <button class="icon-btn" type="button" data-close aria-label="关闭">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <label class="field">
+        <span>任务</span>
+        <input id="edit-title" type="text" maxlength="120" required>
+      </label>
+      <label class="field">
+        <span>备注</span>
+        <textarea id="edit-notes" rows="4" maxlength="5000" placeholder="补充细节、链接或检查项"></textarea>
+      </label>
+      <div class="field">
+        <span>归入日期</span>
+        <div class="date-row">
+          <input id="edit-date" type="date" required aria-label="归入日期">
+          <div class="date-chips" id="edit-date-chips" role="group" aria-label="快捷日期">
+            <button type="button" data-days="0">今天</button>
+            <button type="button" data-days="1">明天</button>
+            <button type="button" data-days="7">下周</button>
+          </div>
+        </div>
+      </div>
+      <p class="edit-meta" id="edit-meta"></p>
+      <div class="modal-actions">
+        <button class="btn-text danger" id="edit-delete" type="button">删除任务</button>
+        <span class="spacer"></span>
+        <button class="btn-ghost" type="button" data-close>取消</button>
+        <button class="btn-primary" type="submit">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="plan-dialog" aria-labelledby="plan-dialog-heading">
+    <form id="plan-edit-form">
+      <div class="modal-head">
+        <h2 id="plan-dialog-heading">编辑计划</h2>
+        <button class="icon-btn" type="button" data-close aria-label="关闭">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <label class="field">
+        <span>计划名称</span>
+        <input id="plan-edit-title" type="text" maxlength="120" required>
+      </label>
+      <div class="field">
+        <span>安排日期</span>
+        <div class="date-field" id="plan-date-field">
+          <button class="date-field-btn" id="plan-date-btn" type="button" aria-haspopup="dialog" aria-expanded="false">
+            <svg class="date-field-calendar" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3.5" y="4.5" width="13" height="11" rx="2.5" stroke="currentColor" stroke-width="1.4"/><path d="M3.5 8.5h13M7 3.2v2.4M13 3.2v2.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            <span id="plan-date-text" class="is-empty">未安排日期</span>
+            <svg class="date-field-caret" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M6.5 8l3.5 3.5L13.5 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      </div>
+      <input id="plan-edit-date" type="hidden" value="">
+      <p class="edit-meta" id="plan-edit-meta"></p>
+      <div class="modal-actions">
+        <button class="btn-text danger" id="plan-edit-delete" type="button">删除计划</button>
+        <span class="spacer"></span>
+        <button class="btn-ghost" type="button" data-close>取消</button>
+        <button class="btn-primary" type="submit">保存</button>
+      </div>
+    </form>
+
+    <div class="date-pop" id="plan-date-pop" role="dialog" aria-label="选择日期" hidden>
+      <div class="date-pop-head">
+        <button type="button" class="icon-btn" data-date-prev aria-label="上个月">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M12.5 5l-5 5 5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <strong id="plan-date-label"></strong>
+        <button type="button" class="icon-btn" data-date-next aria-label="下个月">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M7.5 5l5 5-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <div class="date-pop-week" aria-hidden="true">
+        <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+      </div>
+      <div class="date-pop-grid" id="plan-date-grid"></div>
+      <div class="date-pop-foot">
+        <button type="button" class="btn-text" data-date-today>今天</button>
+        <button type="button" class="btn-text" data-date-clear>清除日期</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="confirm-dialog" aria-labelledby="confirm-heading">
+    <div class="confirm-body">
+      <h2 id="confirm-heading">删除这条任务？</h2>
+      <p id="confirm-text">删除后无法恢复。</p>
+      <div class="modal-actions">
+        <span class="spacer"></span>
+        <button class="btn-ghost" id="confirm-cancel" type="button">取消</button>
+        <button class="btn-primary danger-fill" id="confirm-ok" type="button">删除</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <div class="corner-toast" id="plan-complete-toast" role="status" aria-live="polite">
+    <span class="corner-toast-mark">
+      <svg viewBox="0 0 20 20" fill="none"><path d="M5 10.5l3.2 3.2L15 7" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </span>
+    <div class="corner-toast-body">
+      <span class="corner-toast-eyebrow">计划完成</span>
+      <p id="plan-complete-text"></p>
+    </div>
+  </div>
+
+  <script src="/static/sfx.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
