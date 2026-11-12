@@ -541,6 +541,27 @@ body.all-done .progress span {
   text-decoration-thickness: 1.5px;
 }
 
+.plan-task {
+  grid-template-columns: 20px minmax(0, 1fr);
+}
+
+.plan-task .task-title {
+  text-decoration: none;
+}
+
+.plan-badge {
+  display: inline-block;
+  margin-left: 7px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: #8a6a38;
+  background: rgba(178, 142, 84, 0.14);
+  border-radius: 5px;
+  vertical-align: 1.5px;
+}
+
 .task-time {
   display: inline-block;
   margin-left: 6px;

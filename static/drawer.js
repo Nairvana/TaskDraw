@@ -26,13 +26,17 @@ const el = {
 const state = {
   date: "",
   tasks: [],
+  plans: [],
   loaded: false,
   error: "",
   token: 0,
   pending: new Set(),
+  pendingPlans: new Set(),
   lastFetch: 0,
+  plansAt: 0,
   justDoneId: null,
   lastIds: "",
+  lastSignature: "",
   lastRate: -1,
   wasAllDone: null,
   renderedOnce: false,
@@ -89,14 +93,25 @@ async function api(path, options = {}) {
   return data;
 }
 
+function dailyPlans() {
+  return state.plans
+    .filter((plan) => plan.child_count === 0 && plan.task_id == null && plan.plan_date === state.date)
+    .sort((a, b) => a.position - b.position || a.id - b.id);
+}
+
 function render() {
   updateDateLabel();
-  const open = state.tasks.filter((task) => task.status === "open");
-  const done = state.tasks.filter((task) => task.status === "done");
-  const total = state.tasks.length;
-  const rate = total ? Math.round((done.length / total) * 100) : 0;
-  const ratio = `${done.length}/${total}`;
-  const allDone = total > 0 && open.length === 0;
+  const openTasks = state.tasks.filter((task) => task.status === "open");
+  const doneTasks = state.tasks.filter((task) => task.status === "done");
+  const plans = dailyPlans();
+  const openPlans = plans.filter((plan) => !plan.done);
+  const donePlans = plans.filter((plan) => plan.done);
+  const openTotal = openTasks.length + openPlans.length;
+  const doneTotal = doneTasks.length + donePlans.length;
+  const total = openTotal + doneTotal;
+  const rate = total ? Math.round((doneTotal / total) * 100) : 0;
+  const ratio = `${doneTotal}/${total}`;
+  const allDone = total > 0 && openTotal === 0;
 
   el.progress.style.width = `${rate}%`;
   el.ratioBadge.textContent = ratio;
@@ -130,12 +145,18 @@ function render() {
   } else if (!total) {
     el.summary.textContent = "今天还没有任务";
   } else if (allDone) {
-    el.summary.textContent = `全部完成 · 共 ${total} 项`;
+    el.summary.textContent = plans.length
+      ? `全部完成 · 共 ${total} 项 · 含 ${plans.length} 项计划`
+      : `全部完成 · 共 ${total} 项`;
   } else {
-    el.summary.textContent = `${open.length} 项待办 · ${done.length} 项完成`;
+    const summary = `${openTotal} 项待办 · ${doneTotal} 项完成`;
+    el.summary.textContent = plans.length ? `${summary} · 含 ${plans.length} 项计划` : summary;
   }
 
-  const idsKey = state.tasks.map((task) => task.id).join(",");
+  const idsKey = [
+    ...state.tasks.map((task) => `t${task.id}`),
+    ...plans.map((plan) => `p${plan.id}`),
+  ].join(",");
   const animateList = state.loaded && idsKey !== state.lastIds;
   state.lastIds = idsKey;
 
@@ -163,16 +184,66 @@ function render() {
     return;
   }
 
-  if (open.length) {
-    el.list.appendChild(buildSection("待办", open, { animate: animateList, start: 0 }));
+  if (openTasks.length) {
+    el.list.appendChild(buildSection("待办", openTasks, { animate: animateList, start: 0 }));
   }
-  if (done.length) {
-    el.list.appendChild(buildSection("已完成", done, {
+  if (doneTasks.length) {
+    el.list.appendChild(buildSection("已完成", doneTasks, {
       animate: animateList,
-      start: open.length,
+      start: openTasks.length,
       done: true,
     }));
   }
+  if (plans.length) {
+    el.list.appendChild(buildPlanSection(plans, openTasks.length + doneTasks.length, animateList));
+  }
+}
+
+function buildPlanSection(plans, start, animate) {
+  const section = document.createElement("section");
+  const heading = document.createElement("p");
+  heading.className = "section-label";
+  heading.textContent = `长期计划 · ${plans.length}`;
+  section.appendChild(heading);
+  plans.forEach((plan, index) => section.appendChild(buildPlan(plan, start + index, animate)));
+  return section;
+}
+
+function buildPlan(plan, index = 0, animate = false) {
+  const row = document.createElement("div");
+  row.className = plan.done ? "task plan-task done" : "task plan-task";
+  row.dataset.planId = String(plan.id);
+  row.setAttribute("role", "listitem");
+
+  const check = document.createElement("button");
+  check.type = "button";
+  check.className = "check";
+  check.dataset.action = "plan-toggle";
+  check.setAttribute("aria-label", plan.done ? "标记为未完成" : "标记为完成");
+  check.setAttribute("aria-pressed", String(plan.done));
+  const checkFill = document.createElement("span");
+  checkFill.className = "check-fill";
+  checkFill.setAttribute("aria-hidden", "true");
+  check.appendChild(checkFill);
+
+  const body = document.createElement("div");
+  body.className = "task-body";
+  const title = document.createElement("p");
+  title.className = "task-title";
+  title.textContent = plan.title;
+  const badge = document.createElement("span");
+  badge.className = "plan-badge";
+  badge.textContent = "计划";
+  badge.setAttribute("aria-hidden", "true");
+  title.appendChild(badge);
+  body.appendChild(title);
+
+  row.append(check, body);
+  if (animate) {
+    row.classList.add("enter");
+    row.style.animationDelay = `${Math.min(index * 24, 240)}ms`;
+  }
+  return row;
 }
 
 function celebrate() {
@@ -267,19 +338,36 @@ async function refresh(options = {}) {
   const now = Date.now();
   if (!force && now - state.lastFetch < 1200) return;
   state.lastFetch = now;
-  state.date = todayISO();
+  const today = todayISO();
+  const planDue = force || today !== state.date || now - state.plansAt > 60000;
+  state.date = today;
 
   const token = (state.token += 1);
   if (!state.loaded) render();
   el.sync.textContent = "同步中";
 
   try {
-    const data = await api(`/api/tasks?date=${state.date}`);
+    const [taskData, planData] = await Promise.all([
+      api(`/api/tasks?date=${state.date}`),
+      planDue ? api("/api/plans").catch(() => null) : Promise.resolve(null),
+    ]);
     if (token !== state.token) return;
-    state.tasks = data.tasks || [];
+    state.tasks = taskData.tasks || [];
+    if (planData) {
+      state.plans = planData.plans || [];
+      state.plansAt = Date.now();
+    }
     state.loaded = true;
     state.error = "";
-    render();
+    const signature = JSON.stringify([
+      state.date,
+      state.tasks.map((task) => [task.id, task.title, task.status, task.progress, task.due_time, task.remind]),
+      dailyPlans().map((plan) => [plan.id, plan.title, plan.done]),
+    ]);
+    if (signature !== state.lastSignature) {
+      state.lastSignature = signature;
+      render();
+    }
     const time = new Date();
     el.sync.textContent = `${pad2(time.getHours())}:${pad2(time.getMinutes())} 已同步`;
     el.sync.style.color = "";
@@ -362,6 +450,39 @@ async function toggleTask(id) {
   }
 }
 
+async function togglePlan(id) {
+  if (state.pendingPlans.has(id)) return;
+  const plan = state.plans.find((item) => item.id === id);
+  if (!plan) return;
+
+  const previous = plan.done;
+  state.pendingPlans.add(id);
+  state.token += 1;
+  plan.done = !previous;
+  render();
+
+  try {
+    const updated = await api(`/api/plans/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ done: plan.done }),
+    });
+    state.token += 1;
+    const index = state.plans.findIndex((item) => item.id === id);
+    if (index !== -1) state.plans[index] = updated;
+    render();
+    el.sync.textContent = "刚刚已同步";
+    el.sync.style.color = "";
+  } catch (error) {
+    state.token += 1;
+    plan.done = previous;
+    render();
+    el.sync.textContent = "更新失败";
+    el.sync.style.color = "var(--red)";
+  } finally {
+    state.pendingPlans.delete(id);
+  }
+}
+
 el.list.addEventListener("click", (event) => {
   const actionElement = event.target.closest("[data-action]");
   if (!actionElement) return;
@@ -374,6 +495,10 @@ el.list.addEventListener("click", (event) => {
 
   const row = event.target.closest(".task");
   if (!row) return;
+  if (action === "plan-toggle") {
+    togglePlan(Number(row.dataset.planId));
+    return;
+  }
   const id = Number(row.dataset.id);
   if (action === "toggle") toggleTask(id);
   else if (action === "edit") post("open-main");

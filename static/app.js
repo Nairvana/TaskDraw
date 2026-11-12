@@ -194,6 +194,8 @@ const state = {
   plans: [],
   plansLoaded: false,
   plansInitialized: false,
+  plansSignature: "",
+  dayPlanIndex: new Map(),
   expandedPlans: new Set(),
   pendingPlanToggles: new Set(),
   planAddParent: null,
@@ -529,7 +531,11 @@ function currentTodayISO() {
 function isTodayComplete() {
   const today = currentTodayISO();
   if (state.selected === today && state.loaded) {
-    return state.tasks.length > 0 && state.tasks.every((task) => task.status === "done");
+    const plans = planLeavesForDate(today);
+    const total = state.tasks.length + plans.length;
+    return total > 0
+      && state.tasks.every((task) => task.status === "done")
+      && plans.every((plan) => plan.done);
   }
   const stat = state.stats[today];
   return Boolean(stat && stat.total > 0 && stat.done === stat.total);
@@ -736,29 +742,34 @@ function updateDayHeader() {
 
   updateDayProgress();
 
-  const open = state.tasks.filter((task) => task.status === "open").length;
-  const done = state.tasks.length - open;
-  const planCount = planLeavesForDate(state.selected).length;
-  el.daySummary.classList.toggle("is-complete", state.tasks.length > 0 && open === 0);
+  const dayPlans = planLeavesForDate(state.selected);
+  const taskOpen = state.tasks.filter((task) => task.status === "open").length;
+  const planOpen = dayPlans.filter((plan) => !plan.done).length;
+  const open = taskOpen + planOpen;
+  const total = state.tasks.length + dayPlans.length;
+  const done = total - open;
+  el.daySummary.classList.toggle("is-complete", total > 0 && open === 0);
 
-  if (state.tasks.length === 0) {
-    el.daySummary.textContent = planCount
-      ? `还没有任务 · ${planCount} 项长期计划`
-      : diff < 0
-        ? "这一天没有留下任务"
-        : "还没有任务，先加一条";
+  if (total === 0) {
+    el.daySummary.textContent = diff < 0
+      ? "这一天没有留下任务"
+      : "还没有任务，先加一条";
   } else {
     let summary;
     if (open === 0) summary = `全部完成 · ${done} 项`;
     else if (diff < 0) summary = `${open} 项未完成 · ${done} 项完成`;
     else summary = `${open} 项待办 · 已完成 ${done} 项`;
-    el.daySummary.textContent = planCount ? `${summary} · ${planCount} 项计划` : summary;
+    el.daySummary.textContent = dayPlans.length
+      ? `${summary} · 含 ${dayPlans.length} 项计划`
+      : summary;
   }
 }
 
 function updateDayProgress() {
-  const total = state.tasks.length;
-  const done = state.tasks.filter((task) => task.status === "done").length;
+  const plans = planLeavesForDate(state.selected);
+  const total = state.tasks.length + plans.length;
+  const done = state.tasks.filter((task) => task.status === "done").length
+    + plans.filter((plan) => plan.done).length;
   const ratio = total ? done / total : 0;
 
   el.dayRatio.textContent = `${done}/${total}`;
@@ -798,10 +809,35 @@ function refreshPlansForLinkedTask(taskId) {
   if (state.plans.some((plan) => plan.task_id === taskId)) loadPlans();
 }
 
+function comparePlanSchedule(a, b) {
+  if (a.plan_date && !b.plan_date) return -1;
+  if (!a.plan_date && b.plan_date) return 1;
+  if (a.plan_date && b.plan_date && a.plan_date !== b.plan_date) {
+    return a.plan_date < b.plan_date ? -1 : 1;
+  }
+  if (a.due_time && !b.due_time) return -1;
+  if (!a.due_time && b.due_time) return 1;
+  if (a.due_time && b.due_time && a.due_time !== b.due_time) {
+    return a.due_time < b.due_time ? -1 : 1;
+  }
+  return a.position - b.position || a.id - b.id;
+}
+
+function rebuildDayPlanIndex() {
+  const index = new Map();
+  state.plans.forEach((plan) => {
+    if (plan.child_count !== 0 || plan.task_id != null || !plan.plan_date) return;
+    if (!index.has(plan.plan_date)) index.set(plan.plan_date, []);
+    index.get(plan.plan_date).push(plan);
+  });
+  index.forEach((plans) => {
+    plans.sort((a, b) => Number(a.done) - Number(b.done) || comparePlanSchedule(a, b));
+  });
+  state.dayPlanIndex = index;
+}
+
 function planLeavesForDate(iso) {
-  return state.plans
-    .filter((plan) => plan.child_count === 0 && plan.task_id == null && plan.plan_date === iso)
-    .sort((a, b) => Number(a.done) - Number(b.done) || a.position - b.position);
+  return state.dayPlanIndex.get(iso) || [];
 }
 
 function buildPlanDaySection(plans) {
@@ -1329,7 +1365,10 @@ function fmtPlanDate(value) {
 
 function planScheduleMeta(plan) {
   if (plan.task_id != null) {
-    return plan.plan_date ? `关联任务 · ${fmtPlanDate(plan.plan_date)}` : "已关联任务";
+    const when = plan.plan_date
+      ? `${fmtPlanDate(plan.plan_date)}${plan.due_time ? ` · ${plan.due_time}` : ""}`
+      : "";
+    return when ? `关联任务 · ${when}` : "已关联任务";
   }
   return plan.plan_date ? fmtPlanDate(plan.plan_date) : "未安排日期";
 }
@@ -1694,6 +1733,7 @@ function renderPlans() {
     if (!children.has(key)) children.set(key, []);
     children.get(key).push(plan);
   });
+  children.forEach((list) => list.sort(comparePlanSchedule));
   const roots = children.get(0) || [];
   const fragment = document.createDocumentFragment();
   roots.forEach((plan) => appendPlanNode(fragment, plan, 0, children));
@@ -1708,7 +1748,9 @@ function renderPlans() {
 }
 
 function planDirectChildren(id) {
-  return state.plans.filter((plan) => plan.parent_id === id);
+  return state.plans
+    .filter((plan) => plan.parent_id === id)
+    .sort(comparePlanSchedule);
 }
 
 function buildPlanDetailRow(plan) {
@@ -1880,6 +1922,13 @@ async function loadPlans() {
         state.plans.filter((plan) => plan.child_count > 0).map((plan) => plan.id),
       );
     }
+    rebuildDayPlanIndex();
+    const signature = JSON.stringify(state.plans.map((plan) => [
+      plan.id, plan.parent_id, plan.title, plan.plan_date,
+      plan.due_time, plan.done, plan.position, plan.child_count, plan.task_id,
+    ]));
+    if (signature === state.plansSignature) return;
+    state.plansSignature = signature;
     renderPlans();
     if (state.planDetailId != null) renderPlanDetail();
     if (!state.planView && state.loaded) {
@@ -2004,6 +2053,7 @@ async function submitChildPlan(form) {
     state.expandedPlans.add(parentId);
     state.planAddParent = null;
     await loadPlans();
+    await loadMonth();
     sfx("plan-add");
     toast("已添加子计划", "success");
   } catch (error) {
@@ -2035,8 +2085,9 @@ async function togglePlanDone(id) {
       body: JSON.stringify({ done: !plan.done }),
     });
     await loadPlans();
+    await loadMonth();
     if (plan.task_id != null) {
-      await Promise.all([loadTasks(), loadMonth()]);
+      await loadTasks();
       notifyReminderHost();
     }
     let parentJustCompleted = false;
@@ -2125,6 +2176,7 @@ async function savePlanEdit(event) {
     });
     el.planDialog.close();
     await loadPlans();
+    await loadMonth();
     toast("计划已更新", "success");
   } catch (error) {
     toast(error.message, "error");
@@ -2782,6 +2834,7 @@ async function confirmDelete() {
       if (state.planAddParent === deletingId) state.planAddParent = null;
       el.confirmDialog.close();
       await loadPlans();
+      await loadMonth();
       sfx("plan-delete");
       toast("计划已删除", "success");
     } catch (error) {
@@ -3488,6 +3541,9 @@ window.addEventListener("focus", () => {
   if (now - lastFocusRefresh < 2000) return;
   lastFocusRefresh = now;
   refreshAll();
+  if (state.planAddParent == null && !el.planDialog.open && !el.confirmDialog.open) {
+    loadPlans();
+  }
 });
 
 function init() {

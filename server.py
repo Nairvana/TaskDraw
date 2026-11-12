@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_date ON tasks(task_date);
+CREATE INDEX IF NOT EXISTS idx_tasks_day_order ON tasks(task_date, position, id);
 CREATE TABLE IF NOT EXISTS plans (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     parent_id INTEGER,
@@ -51,6 +52,7 @@ CREATE TABLE IF NOT EXISTS plans (
     updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_plans_parent ON plans(parent_id);
+CREATE INDEX IF NOT EXISTS idx_plans_date ON plans(plan_date);
 """
 
 CONTENT_TYPES = {
@@ -106,6 +108,7 @@ def db_session():
     conn = sqlite3.connect(DB_PATH, timeout=5)
     conn.row_factory = sqlite3.Row
     try:
+        conn.execute("PRAGMA synchronous = NORMAL")
         yield conn
         conn.commit()
     finally:
@@ -193,7 +196,7 @@ def plan_payload(db) -> list[dict]:
     rows = db.execute(
         """
         SELECT p.*, t.title AS linked_task_title, t.task_date AS linked_task_date,
-               t.status AS linked_task_status
+               t.status AS linked_task_status, t.due_time AS linked_task_due_time
         FROM plans p
         LEFT JOIN tasks t ON t.id = p.task_id
         ORDER BY p.position ASC, p.id ASC
@@ -210,6 +213,7 @@ def plan_payload(db) -> list[dict]:
                 "linked_task_title": row["linked_task_title"],
                 "title": row["title"],
                 "plan_date": row["linked_task_date"] if linked else row["plan_date"],
+                "due_time": row["linked_task_due_time"] if linked else None,
                 "done": (row["linked_task_status"] == "done") if linked else bool(row["done"]),
                 "position": row["position"],
                 "completed_at": row["completed_at"],
@@ -222,16 +226,24 @@ def plan_payload(db) -> list[dict]:
         children.setdefault(item["parent_id"], []).append(item)
     by_id = {item["id"]: item for item in items}
 
+    leaf_cache: dict[int, tuple[int, int]] = {}
+
     def leaf_stats(plan_id: int) -> tuple[int, int]:
+        cached = leaf_cache.get(plan_id)
+        if cached is not None:
+            return cached
         kids = children.get(plan_id, [])
         if not kids:
-            return (1 if by_id[plan_id]["done"] else 0, 1)
-        done = total = 0
-        for kid in kids:
-            kid_done, kid_total = leaf_stats(kid["id"])
-            done += kid_done
-            total += kid_total
-        return done, total
+            result = (1 if by_id[plan_id]["done"] else 0, 1)
+        else:
+            done = total = 0
+            for kid in kids:
+                kid_done, kid_total = leaf_stats(kid["id"])
+                done += kid_done
+                total += kid_total
+            result = (done, total)
+        leaf_cache[plan_id] = result
+        return result
 
     for item in items:
         done, total = leaf_stats(item["id"])
@@ -305,9 +317,12 @@ class TaskDrawHandler(BaseHTTPRequestHandler):
         if path == "/api/tasks/all":
             with db_session() as db:
                 rows = db.execute(
-                    "SELECT * FROM tasks ORDER BY task_date ASC, position ASC, id ASC"
+                    """
+                    SELECT id, title, task_date, status FROM tasks
+                    ORDER BY task_date ASC, position ASC, id ASC
+                    """
                 ).fetchall()
-            self._send_json(200, {"tasks": [task_dict(r) for r in rows]})
+            self._send_json(200, {"tasks": [dict(row) for row in rows]})
             return
 
         task_match = re.fullmatch(r"/api/tasks/(\d+)", path)
@@ -357,11 +372,31 @@ class TaskDrawHandler(BaseHTTPRequestHandler):
                     """,
                     (start, end),
                 ).fetchall()
+                plan_rows = db.execute(
+                    """
+                    SELECT p.plan_date,
+                           COUNT(*) AS total,
+                           SUM(CASE WHEN p.done = 1 THEN 1 ELSE 0 END) AS done
+                    FROM plans p
+                    WHERE p.task_id IS NULL
+                      AND p.plan_date BETWEEN ? AND ?
+                      AND NOT EXISTS (SELECT 1 FROM plans c WHERE c.parent_id = p.id)
+                    GROUP BY p.plan_date
+                    """,
+                    (start, end),
+                ).fetchall()
             days = {}
             for row in rows:
                 total = row["total"]
                 done = row["done"] or 0
                 days[row["task_date"]] = {"total": total, "done": done, "open": total - done}
+            for row in plan_rows:
+                total = row["total"]
+                done = row["done"] or 0
+                day = days.setdefault(row["plan_date"], {"total": 0, "done": 0, "open": 0})
+                day["total"] += total
+                day["done"] += done
+                day["open"] = day["total"] - day["done"]
             self._send_json(200, {"start": start, "end": end, "days": days})
             return
 
