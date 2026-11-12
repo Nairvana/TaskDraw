@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TaskDraw · 提醒</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23b64a32'/%3E%3Cpath d='M9 16.5l4.5 4.5L23 11.5' stroke='%23fff' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/reminder.css">
+</head>
+<body>
+  <div class="bar" id="bar">
+    <span class="mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="7.4" stroke="currentColor" stroke-width="1.7"/>
+        <path d="M12 7.8V12l3 1.9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </span>
+    <div class="copy">
+      <p class="eyebrow" id="eyebrow">日程提醒</p>
+      <p class="title" id="title">任务提醒</p>
+      <p class="sub" id="sub"></p>
+    </div>
+    <div class="confirm-zone">
+      <span class="swipe-hint" id="swipe-hint">勾选确认</span>
+      <button class="confirm" id="confirm" type="button" role="checkbox" aria-checked="false" aria-label="确认完成">
+        <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M5 10.4l3.3 3.3L15 6.9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <script src="/static/reminder.js"></script>
+</body>
+</html>

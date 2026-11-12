@@ -74,6 +74,15 @@ const el = {
   newNotes: document.getElementById("new-notes"),
   newNotesWrap: document.getElementById("new-notes-wrap"),
   notesToggle: document.getElementById("notes-toggle"),
+  newTime: document.getElementById("new-time"),
+  newTimeBtn: document.getElementById("new-time-btn"),
+  newTimeWrap: document.getElementById("new-time-wrap"),
+  newAdvance: document.getElementById("new-advance"),
+  newAdvanceBtn: document.getElementById("new-advance-btn"),
+  newAdvanceOn: document.getElementById("new-advance-on"),
+  newAdvanceNote: document.getElementById("new-advance-note"),
+  newRemind: document.getElementById("new-remind"),
+  timeToggle: document.getElementById("time-toggle"),
   addBtn: document.getElementById("add-btn"),
   taskScroll: document.querySelector(".task-scroll"),
   taskList: document.getElementById("task-list"),
@@ -81,7 +90,19 @@ const el = {
   editForm: document.getElementById("edit-form"),
   editTitle: document.getElementById("edit-title"),
   editNotes: document.getElementById("edit-notes"),
+  editTime: document.getElementById("edit-time"),
+  editTimeBtn: document.getElementById("edit-time-btn"),
+  editAdvance: document.getElementById("edit-advance"),
+  editAdvanceBtn: document.getElementById("edit-advance-btn"),
+  editAdvanceOn: document.getElementById("edit-advance-on"),
+  editAdvanceNote: document.getElementById("edit-advance-note"),
+  editRemind: document.getElementById("edit-remind"),
   editDate: document.getElementById("edit-date"),
+  editDateBtn: document.getElementById("edit-date-btn"),
+  editDateText: document.getElementById("edit-date-text"),
+  editDatePop: document.getElementById("edit-date-pop"),
+  editDateLabel: document.getElementById("edit-date-label"),
+  editDateGrid: document.getElementById("edit-date-grid"),
   editDateChips: document.getElementById("edit-date-chips"),
   editMeta: document.getElementById("edit-meta"),
   editDelete: document.getElementById("edit-delete"),
@@ -113,6 +134,8 @@ const el = {
   planEditForm: document.getElementById("plan-edit-form"),
   planEditTitle: document.getElementById("plan-edit-title"),
   planEditDate: document.getElementById("plan-edit-date"),
+  planEditTask: document.getElementById("plan-edit-task"),
+  planLinkHint: document.getElementById("plan-link-hint"),
   planEditMeta: document.getElementById("plan-edit-meta"),
   planEditDelete: document.getElementById("plan-edit-delete"),
   planDateField: document.getElementById("plan-date-field"),
@@ -128,6 +151,14 @@ const el = {
   confirmHeading: document.getElementById("confirm-heading"),
   planCompleteToast: document.getElementById("plan-complete-toast"),
   planCompleteText: document.getElementById("plan-complete-text"),
+  taskRemindToast: document.getElementById("task-remind-toast"),
+  taskRemindText: document.getElementById("task-remind-text"),
+  taskRemindEyebrow: document.getElementById("task-remind-eyebrow"),
+  timePop: document.getElementById("time-pop"),
+  timePopLabel: document.getElementById("time-pop-label"),
+  timePopHint: document.getElementById("time-pop-hint"),
+  timeHours: document.getElementById("time-hours"),
+  timeMinutes: document.getElementById("time-minutes"),
   soundToggle: document.getElementById("sound-toggle"),
 };
 
@@ -170,6 +201,9 @@ const state = {
   planEditingId: null,
   planDeletingId: null,
   calendarPick: null,
+  remindFired: new Set(),
+  reminderTasks: null,
+  reminderTasksAt: 0,
 };
 
 function pad2(value) {
@@ -207,6 +241,14 @@ let bubbleAnimating = false;
 let planDateView = null;
 let planDateHideTimer = null;
 let planCompleteTimer = null;
+let remindToastTimer = null;
+let remindTimer = null;
+let remindCheckBusy = false;
+let notifyAsked = false;
+let planTaskOptions = [];
+let timePick = null;
+let editDateView = null;
+let editDateHideTimer = null;
 
 function sfx(name) {
   window.Sfx?.play(name);
@@ -232,6 +274,7 @@ function toast(message, type = "info") {
 
 function showPlanCompleteToast(title) {
   sfx("plan-all-done");
+  el.taskRemindToast.classList.remove("show");
   el.planCompleteText.textContent = `「${title}」的子计划已全部完成`;
   el.planCompleteToast.classList.remove("show");
   void el.planCompleteToast.offsetWidth;
@@ -239,6 +282,108 @@ function showPlanCompleteToast(title) {
   clearTimeout(planCompleteTimer);
   planCompleteTimer = setTimeout(() => el.planCompleteToast.classList.remove("show"), 3800);
 }
+
+function ensureNotifyPermission() {
+  if (notifyAsked) return;
+  notifyAsked = true;
+  if (!("Notification" in window) || Notification.permission !== "default") return;
+  try {
+    Notification.requestPermission().catch(() => {});
+  } catch (error) {
+    /* notification permission is best-effort */
+  }
+}
+
+function taskReminderCandidates(task) {
+  const list = [];
+  if (task.due_time && task.remind) list.push({ kind: "on", time: task.due_time });
+  if (task.advance_time && task.due_time && task.advance_time < task.due_time) {
+    list.push({ kind: "advance", time: task.advance_time });
+  }
+  return list;
+}
+
+function reminderReached(time, now) {
+  const [hour, minute] = time.split(":").map(Number);
+  const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute, 0, 0);
+  const delta = (now.getTime() - target.getTime()) / 1000;
+  return delta >= 0 && delta <= 90;
+}
+
+function showTaskReminder(task, kind, time) {
+  sfx("task-remind");
+  el.planCompleteToast.classList.remove("show");
+  el.taskRemindEyebrow.textContent = `${kind === "advance" ? "提前提醒" : "日程提醒"} · ${time}`;
+  el.taskRemindText.textContent = kind === "advance"
+    ? `${task.title} · 任务时间 ${task.due_time}`
+    : task.title;
+  el.taskRemindToast.classList.remove("show");
+  void el.taskRemindToast.offsetWidth;
+  el.taskRemindToast.classList.add("show");
+  clearTimeout(remindToastTimer);
+  remindToastTimer = setTimeout(() => el.taskRemindToast.classList.remove("show"), 6500);
+  if (document.hidden && "Notification" in window && Notification.permission === "granted") {
+    try {
+      new Notification(`${kind === "advance" ? "提前提醒" : "日程提醒"} · ${time}`, {
+        body: task.title,
+        tag: `taskdraw-${task.id}-${kind}`,
+      });
+    } catch (error) {
+      /* fall back to the in-app toast */
+    }
+  }
+}
+
+async function checkTaskReminders() {
+  if (!state.loaded) return;
+  const now = new Date();
+  if (!state.reminderTasks || Date.now() - state.reminderTasksAt > 20000) {
+    if (remindCheckBusy) return;
+    remindCheckBusy = true;
+    try {
+      const data = await api(`/api/tasks?date=${toISO(now)}`);
+      state.reminderTasks = data.tasks || [];
+      state.reminderTasksAt = Date.now();
+    } catch (error) {
+      return;
+    } finally {
+      remindCheckBusy = false;
+    }
+  }
+  (state.reminderTasks || []).forEach((task) => {
+    if (task.status === "done") return;
+    taskReminderCandidates(task).forEach(({ kind, time }) => {
+      if (!reminderReached(time, now)) return;
+      const key = `${task.id}:${task.task_date}:${kind}:${time}`;
+      if (state.remindFired.has(key)) return;
+      state.remindFired.add(key);
+      showTaskReminder(task, kind, time);
+    });
+  });
+}
+
+function startReminderLoop() {
+  if (remindTimer) return;
+  remindTimer = setInterval(checkTaskReminders, 1000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) checkTaskReminders();
+  });
+  document.addEventListener("pointerdown", ensureNotifyPermission, { once: true });
+  document.addEventListener("keydown", ensureNotifyPermission, { once: true });
+  setTimeout(checkTaskReminders, 1200);
+}
+
+function notifyReminderHost() {
+  state.reminderTasksAt = 0;
+  desktopBridge?.postMessage({ action: "refresh-reminders" });
+}
+
+window.taskdrawReminderChime = () => sfx("task-remind");
+window.taskdrawRefresh = async () => {
+  state.reminderTasksAt = 0;
+  await refreshAll();
+  await loadPlans();
+};
 
 async function api(path, options = {}) {
   const config = { ...options, headers: { "Content-Type": "application/json" } };
@@ -649,9 +794,13 @@ function skeletonState() {
   return wrap;
 }
 
+function refreshPlansForLinkedTask(taskId) {
+  if (state.plans.some((plan) => plan.task_id === taskId)) loadPlans();
+}
+
 function planLeavesForDate(iso) {
   return state.plans
-    .filter((plan) => plan.child_count === 0 && plan.plan_date === iso)
+    .filter((plan) => plan.child_count === 0 && plan.task_id == null && plan.plan_date === iso)
     .sort((a, b) => Number(a.done) - Number(b.done) || a.position - b.position);
 }
 
@@ -769,6 +918,21 @@ function buildTask(task, index = 0, animate = false, enteringId = null) {
   const title = document.createElement("p");
   title.className = "task-title";
   title.textContent = task.title;
+  if (task.due_time) {
+    const time = document.createElement("span");
+    time.className = task.remind ? "task-time is-remind" : "task-time";
+    time.textContent = task.due_time;
+    time.title = task.remind ? "已设置到点提醒" : "任务时间";
+    title.appendChild(time);
+  }
+  const linkedPlan = state.plans.find((plan) => plan.task_id === task.id);
+  if (linkedPlan) {
+    const planBadge = document.createElement("span");
+    planBadge.className = "task-plan-link";
+    planBadge.textContent = "计划";
+    planBadge.title = `关联计划：${linkedPlan.title}`;
+    title.appendChild(planBadge);
+  }
   if (!isDone && task.task_date < todayStr) {
     const badge = document.createElement("span");
     badge.className = "badge";
@@ -1036,6 +1200,8 @@ async function persistProgress(id, value, previous) {
       renderTasks();
       updateDayHeader();
       loadMonth();
+      refreshPlansForLinkedTask(id);
+      notifyReminderHost();
       return;
     }
 
@@ -1043,6 +1209,8 @@ async function persistProgress(id, value, previous) {
     renderTasks();
     updateDayHeader();
     loadMonth();
+    refreshPlansForLinkedTask(id);
+    notifyReminderHost();
     if (state.progressEditingId === id) {
       requestAnimationFrame(() => {
         el.taskList.querySelector(`.task[data-id="${id}"] .tp-track`)?.focus();
@@ -1159,6 +1327,109 @@ function fmtPlanDate(value) {
   return `${prefix}${d.getMonth() + 1}月${d.getDate()}日 · ${WEEKDAY_FULL[d.getDay()]}`;
 }
 
+function planScheduleMeta(plan) {
+  if (plan.task_id != null) {
+    return plan.plan_date ? `关联任务 · ${fmtPlanDate(plan.plan_date)}` : "已关联任务";
+  }
+  return plan.plan_date ? fmtPlanDate(plan.plan_date) : "未安排日期";
+}
+
+function linkedTaskIdSet(exceptPlanId = null) {
+  return new Set(
+    state.plans
+      .filter((plan) => plan.task_id != null && plan.id !== exceptPlanId)
+      .map((plan) => plan.task_id),
+  );
+}
+
+function fillTaskSelect(select, tasks, selectedId, excluded) {
+  select.replaceChildren(new Option("不关联已有任务", ""));
+  const available = tasks.filter(
+    (task) => !excluded.has(task.id) || String(task.id) === String(selectedId),
+  );
+  if (!available.length) return;
+  let group = null;
+  let dateKey = "";
+  available.forEach((task) => {
+    if (task.task_date !== dateKey) {
+      dateKey = task.task_date;
+      group = document.createElement("optgroup");
+      group.label = fmtPlanDate(task.task_date);
+      select.appendChild(group);
+    }
+    const suffix = task.status === "done" ? " · 已完成" : "";
+    group.appendChild(new Option(`${task.title}${suffix}`, String(task.id)));
+  });
+  select.value = selectedId != null ? String(selectedId) : "";
+}
+
+async function populateChildTaskSelect(form) {
+  const select = form.querySelector('select[name="task_id"]');
+  if (!select) return;
+  select.disabled = true;
+  select.replaceChildren(new Option("正在加载任务…", ""));
+  try {
+    const data = await api("/api/tasks/all");
+    if (!form.isConnected) return;
+    form._taskOptions = data.tasks || [];
+    fillTaskSelect(select, form._taskOptions, null, linkedTaskIdSet());
+    select.disabled = false;
+  } catch (error) {
+    if (!form.isConnected) return;
+    select.replaceChildren(new Option("任务加载失败", ""));
+    select.disabled = true;
+  }
+}
+
+function applyTaskLinkToForm(form, task) {
+  const parts = planChildDateParts(form);
+  if (task) {
+    parts.input.value = task.task_date;
+    syncChildDateField(form);
+    parts.button.disabled = true;
+  } else {
+    parts.button.disabled = false;
+    syncChildDateField(form);
+  }
+}
+
+function setPlanDateDisabled(disabled) {
+  el.planDateBtn.disabled = disabled;
+  el.planDateField.classList.toggle("is-disabled", disabled);
+  if (disabled) closePlanDatePopover();
+}
+
+async function populatePlanEditTaskOptions(plan) {
+  el.planEditTask.replaceChildren(new Option("正在加载任务…", ""));
+  el.planEditTask.disabled = true;
+  el.planEditTask.dataset.ready = "0";
+  if (plan.child_count > 0) {
+    el.planEditTask.replaceChildren(new Option("仅最末级小计划可关联任务", ""));
+    el.planLinkHint.textContent = "只有最末级的小计划可以关联已有任务。";
+    return;
+  }
+  try {
+    const data = await api("/api/tasks/all");
+    if (state.planEditingId !== plan.id || !el.planDialog.open) return;
+    planTaskOptions = data.tasks || [];
+    fillTaskSelect(el.planEditTask, planTaskOptions, plan.task_id, linkedTaskIdSet(plan.id));
+    el.planEditTask.disabled = false;
+    el.planEditTask.dataset.ready = "1";
+    if (plan.task_id != null) {
+      setPlanDateDisabled(true);
+      const linked = planTaskOptions.find((task) => task.id === plan.task_id);
+      el.planLinkHint.textContent = linked
+        ? `关联「${linked.title}」，日期与完成状态跟随该任务。`
+        : "完成状态与关联任务同步。";
+    }
+  } catch (error) {
+    if (state.planEditingId !== plan.id) return;
+    el.planEditTask.replaceChildren(new Option("任务加载失败", ""));
+    el.planEditTask.disabled = true;
+    toast(error.message, "error");
+  }
+}
+
 function planEmptyState() {
   const wrap = document.createElement("div");
   wrap.className = "empty plan-empty";
@@ -1194,10 +1465,20 @@ function buildPlanChildForm(depth) {
       </button>
       <input type="hidden" name="plan_date" value="">
     </div>
+    <select name="task_id" class="plan-child-task" aria-label="关联已有任务">
+      <option value="">不关联已有任务</option>
+    </select>
     <button type="submit">添加</button>
     <button type="button" class="plan-form-cancel" data-plan-cancel="1">取消</button>
   `;
   form.querySelector("[data-child-date-btn]").addEventListener("click", () => startCalendarPick(form));
+  form.querySelector('select[name="task_id"]').addEventListener("change", (event) => {
+    const task = (form._taskOptions || []).find(
+      (item) => String(item.id) === event.target.value,
+    );
+    applyTaskLinkToForm(form, task || null);
+  });
+  populateChildTaskSelect(form);
   return form;
 }
 
@@ -1362,7 +1643,7 @@ function appendPlanNode(fragment, plan, depth, children) {
   if (hasKids) {
     meta.textContent = `${kids.length} 个子计划${plan.plan_date ? ` · ${fmtPlanDate(plan.plan_date)}` : ""}`;
   } else {
-    meta.textContent = plan.plan_date ? fmtPlanDate(plan.plan_date) : "未安排日期";
+    meta.textContent = planScheduleMeta(plan);
   }
   main.appendChild(meta);
 
@@ -1377,7 +1658,7 @@ function appendPlanNode(fragment, plan, depth, children) {
   const actions = document.createElement("div");
   actions.className = "plan-actions";
   actions.innerHTML = `
-    <button type="button" class="icon-btn" data-plan-action="add" title="添加子计划" aria-label="添加子计划">${ICON_FOLDER_PLUS}</button>
+    ${plan.task_id == null ? `<button type="button" class="icon-btn" data-plan-action="add" title="添加子计划" aria-label="添加子计划">${ICON_FOLDER_PLUS}</button>` : ""}
     <button type="button" class="icon-btn" data-plan-action="edit" title="编辑计划" aria-label="编辑计划">${ICON_EDIT}</button>
     <button type="button" class="icon-btn danger" data-plan-action="delete" title="删除计划" aria-label="删除计划">${ICON_TRASH}</button>
   `;
@@ -1466,7 +1747,7 @@ function buildPlanDetailRow(plan) {
   if (hasKids) {
     meta.textContent = `${plan.child_count} 个子计划${plan.plan_date ? ` · ${fmtPlanDate(plan.plan_date)}` : ""}`;
   } else {
-    meta.textContent = plan.plan_date ? fmtPlanDate(plan.plan_date) : "未安排日期";
+    meta.textContent = planScheduleMeta(plan);
   }
   main.append(name, meta);
 
@@ -1481,7 +1762,7 @@ function buildPlanDetailRow(plan) {
   const actions = document.createElement("div");
   actions.className = "plan-actions";
   actions.innerHTML = `
-    <button type="button" class="icon-btn" data-plan-action="add" title="添加子计划" aria-label="添加子计划">${ICON_FOLDER_PLUS}</button>
+    ${plan.task_id == null ? `<button type="button" class="icon-btn" data-plan-action="add" title="添加子计划" aria-label="添加子计划">${ICON_FOLDER_PLUS}</button>` : ""}
     <button type="button" class="icon-btn" data-plan-action="edit" title="编辑计划" aria-label="编辑计划">${ICON_EDIT}</button>
     <button type="button" class="icon-btn danger" data-plan-action="delete" title="删除计划" aria-label="删除计划">${ICON_TRASH}</button>
   `;
@@ -1508,7 +1789,11 @@ function renderPlanDetail() {
   el.planDetailPct.textContent = `${plan.percent}%`;
   el.planDetailMeter.style.width = `${plan.percent}%`;
   const summary = [`${plan.child_count} 个子计划`];
-  if (plan.plan_date) summary.push(fmtPlanDate(plan.plan_date));
+  if (plan.task_id != null) {
+    summary.push(plan.linked_task_title ? `关联「${plan.linked_task_title}」` : "已关联任务");
+  } else if (plan.plan_date) {
+    summary.push(fmtPlanDate(plan.plan_date));
+  }
   summary.push(`已完成 ${plan.leaf_done}/${plan.leaf_total}`);
   el.planDetailSummary.textContent = summary.join(" · ");
 
@@ -1698,6 +1983,7 @@ async function submitChildPlan(form) {
   if (!Number.isFinite(parentId)) return;
   const titleInput = form.querySelector('input[name="title"]');
   const dateInput = form.querySelector('input[name="plan_date"]');
+  const taskSelect = form.querySelector('select[name="task_id"]');
   const title = titleInput.value.trim();
   if (!title) {
     titleInput.focus();
@@ -1712,6 +1998,7 @@ async function submitChildPlan(form) {
         title,
         parent_id: parentId,
         plan_date: dateInput.value || null,
+        task_id: taskSelect && taskSelect.value ? Number(taskSelect.value) : null,
       }),
     });
     state.expandedPlans.add(parentId);
@@ -1748,6 +2035,10 @@ async function togglePlanDone(id) {
       body: JSON.stringify({ done: !plan.done }),
     });
     await loadPlans();
+    if (plan.task_id != null) {
+      await Promise.all([loadTasks(), loadMonth()]);
+      notifyReminderHost();
+    }
     let parentJustCompleted = false;
     if (!plan.done && plan.parent_id != null) {
       const parentAfter = state.plans.find((item) => item.id === plan.parent_id);
@@ -1796,9 +2087,13 @@ function openPlanEdit(id) {
   el.planEditDate.value = plan.plan_date || "";
   syncPlanDateField();
   closePlanDatePopover();
+  setPlanDateDisabled(false);
+  el.planEditTask.dataset.ready = "0";
+  el.planLinkHint.textContent = "关联后完成状态与任务同步，不再单独出现在日程中。";
   el.planEditMeta.textContent = plan.child_count
     ? `含 ${plan.child_count} 个子计划 · 当前完成度 ${plan.percent}%`
     : "安排日期可留空，小计划会显示在计划树里";
+  populatePlanEditTaskOptions(plan);
   if (!el.planDialog.open) el.planDialog.showModal();
   requestAnimationFrame(() => {
     el.planEditTitle.focus();
@@ -1817,12 +2112,16 @@ async function savePlanEdit(event) {
   const submit = el.planEditForm.querySelector('button[type="submit"]');
   submit.disabled = true;
   try {
+    const payload = {
+      title,
+      plan_date: el.planEditDate.value || null,
+    };
+    if (el.planEditTask.dataset.ready === "1") {
+      payload.task_id = el.planEditTask.value ? Number(el.planEditTask.value) : null;
+    }
     await api(`/api/plans/${state.planEditingId}`, {
       method: "PATCH",
-      body: JSON.stringify({
-        title,
-        plan_date: el.planEditDate.value || null,
-      }),
+      body: JSON.stringify(payload),
     });
     el.planDialog.close();
     await loadPlans();
@@ -1969,11 +2268,267 @@ function shiftMonth(delta) {
   loadMonth();
 }
 
+function parseClock(value) {
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value || "");
+  return match ? { hour: Number(match[1]), minute: Number(match[2]) } : null;
+}
+
+function fmtClock(hour, minute) {
+  return `${pad2(hour)}:${pad2(minute)}`;
+}
+
+function clockMinutes(value) {
+  const parsed = parseClock(value);
+  return parsed ? parsed.hour * 60 + parsed.minute : null;
+}
+
+function timeContext(mode) {
+  if (mode === "new") {
+    return {
+      due: el.newTime,
+      dueBtn: el.newTimeBtn,
+      remind: el.newRemind,
+      advance: el.newAdvance,
+      advanceBtn: el.newAdvanceBtn,
+      advanceOn: el.newAdvanceOn,
+      note: el.newAdvanceNote,
+    };
+  }
+  return {
+    due: el.editTime,
+    dueBtn: el.editTimeBtn,
+    remind: el.editRemind,
+    advance: el.editAdvance,
+    advanceBtn: el.editAdvanceBtn,
+    advanceOn: el.editAdvanceOn,
+    note: el.editAdvanceNote,
+  };
+}
+
+function updateTimeUI(mode) {
+  const ctx = timeContext(mode);
+  const due = ctx.due.value;
+  const advance = ctx.advance.value;
+  ctx.dueBtn.textContent = due || "选择时间";
+  ctx.dueBtn.classList.toggle("has-value", Boolean(due));
+  ctx.remind.disabled = !due;
+  if (!due) ctx.remind.checked = false;
+  ctx.advanceOn.disabled = !due;
+  if (!due) {
+    ctx.advanceOn.checked = false;
+    ctx.advance.value = "";
+  }
+  ctx.advanceBtn.disabled = !due || !ctx.advanceOn.checked;
+  ctx.advanceBtn.textContent = advance && ctx.advanceOn.checked ? advance : "选择时间";
+  ctx.advanceBtn.classList.toggle("has-value", Boolean(advance) && ctx.advanceOn.checked);
+  const invalid = Boolean(due && advance && ctx.advanceOn.checked && advance >= due);
+  ctx.advanceBtn.classList.toggle("is-warning", invalid);
+  ctx.note.classList.toggle("is-warning", invalid);
+  if (ctx.advanceOn.checked && due) {
+    if (!advance) {
+      ctx.note.textContent = "请选择时间";
+    } else if (invalid) {
+      ctx.note.textContent = `需早于 ${due}`;
+    } else {
+      const diff = clockMinutes(due) - clockMinutes(advance);
+      ctx.note.textContent = `提前 ${diff} 分钟`;
+    }
+  } else {
+    ctx.note.textContent = "";
+  }
+  if (mode === "new") {
+    el.timeToggle.textContent = due || "时间";
+  }
+}
+
+function setDueTime(mode, value) {
+  const ctx = timeContext(mode);
+  const previous = ctx.due.value;
+  const wasRemindDisabled = ctx.remind.disabled;
+  ctx.due.value = value || "";
+  if (!value) {
+    ctx.advance.value = "";
+    ctx.advanceOn.checked = false;
+    ctx.remind.checked = false;
+  } else {
+    if (wasRemindDisabled) ctx.remind.checked = true;
+    if (ctx.advanceOn.checked) {
+      if (!ctx.advance.value || ctx.advance.value === previous || ctx.advance.value >= value) {
+        ctx.advance.value = value;
+      }
+    }
+  }
+  updateTimeUI(mode);
+}
+
+function setAdvanceTime(mode, value) {
+  const ctx = timeContext(mode);
+  ctx.advance.value = value || "";
+  ctx.advanceOn.checked = Boolean(value);
+  updateTimeUI(mode);
+}
+
+function toggleAdvance(mode, checked) {
+  const ctx = timeContext(mode);
+  if (checked) {
+    if (!ctx.due.value) {
+      ctx.advanceOn.checked = false;
+      updateTimeUI(mode);
+      return;
+    }
+    if (!ctx.advance.value) ctx.advance.value = ctx.due.value;
+  } else {
+    ctx.advance.value = "";
+  }
+  updateTimeUI(mode);
+}
+
+function parkTimePicker() {
+  el.timePop.classList.remove("is-open");
+  el.timePop.hidden = true;
+  el.editDialog.classList.remove("time-pop-open");
+  document.body.appendChild(el.timePop);
+}
+
+function closeTimePicker(immediate = false) {
+  el.editDialog.classList.remove("time-pop-open");
+  if (!timePick) {
+    if (immediate) parkTimePicker();
+    return;
+  }
+  const anchor = timePick.anchor;
+  timePick = null;
+  anchor?.setAttribute("aria-expanded", "false");
+  el.timePop.classList.remove("is-open");
+  if (immediate) {
+    parkTimePicker();
+    return;
+  }
+  setTimeout(() => {
+    if (!timePick) parkTimePicker();
+  }, 170);
+}
+
+function renderTimePicker() {
+  if (!timePick) return;
+  const ctx = timeContext(timePick.mode);
+  const dueMinutes = clockMinutes(ctx.due.value);
+  const isAdvance = timePick.kind === "advance";
+  const selectedMinutes = timePick.hour * 60 + timePick.minute;
+
+  const hourFragment = document.createDocumentFragment();
+  for (let hour = 0; hour < 24; hour += 1) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = pad2(hour);
+    button.dataset.hour = String(hour);
+    button.classList.toggle("is-selected", hour === timePick.hour);
+    button.disabled = isAdvance && dueMinutes != null && hour * 60 >= dueMinutes;
+    hourFragment.appendChild(button);
+  }
+
+  const minuteFragment = document.createDocumentFragment();
+  for (let minute = 0; minute < 60; minute += 1) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = pad2(minute);
+    button.dataset.minute = String(minute);
+    button.classList.toggle("is-selected", minute === timePick.minute);
+    button.disabled = isAdvance && dueMinutes != null && timePick.hour * 60 + minute >= dueMinutes;
+    minuteFragment.appendChild(button);
+  }
+
+  el.timeHours.replaceChildren(hourFragment);
+  el.timeMinutes.replaceChildren(minuteFragment);
+  el.timePopHint.textContent = isAdvance
+    ? (dueMinutes == null ? "请先设置任务时间" : `需早于 ${ctx.due.value}`)
+    : "";
+  el.timePopHint.classList.toggle(
+    "is-warning",
+    isAdvance && dueMinutes != null && selectedMinutes >= dueMinutes,
+  );
+}
+
+function scrollTimeColumns() {
+  const selectedHour = el.timeHours.querySelector("button.is-selected");
+  const selectedMinute = el.timeMinutes.querySelector("button.is-selected");
+  if (selectedHour) {
+    el.timeHours.scrollTop = selectedHour.offsetTop - el.timeHours.clientHeight / 2 + selectedHour.offsetHeight / 2;
+  }
+  if (selectedMinute) {
+    el.timeMinutes.scrollTop = selectedMinute.offsetTop - el.timeMinutes.clientHeight / 2 + selectedMinute.offsetHeight / 2;
+  }
+}
+
+function applyTimeDraft() {
+  if (!timePick) return;
+  const value = fmtClock(timePick.hour, timePick.minute);
+  if (timePick.kind === "advance") setAdvanceTime(timePick.mode, value);
+  else setDueTime(timePick.mode, value);
+}
+
+function positionTimePicker(anchor) {
+  const rect = anchor.getBoundingClientRect();
+  const width = el.timePop.offsetWidth || 222;
+  const height = el.timePop.offsetHeight || 300;
+  let left = Math.min(rect.left, window.innerWidth - width - 8);
+  left = Math.max(8, left);
+  let top = rect.bottom + 8;
+  if (top + height > window.innerHeight - 8) {
+    top = Math.max(8, rect.top - height - 8);
+  }
+  el.timePop.style.left = `${left}px`;
+  el.timePop.style.top = `${top}px`;
+}
+
+function openTimePicker(mode, kind, anchor) {
+  if (mode === "edit") closeEditDatePopover(true);
+  if (timePick && timePick.anchor === anchor) {
+    closeTimePicker();
+    return;
+  }
+  closeTimePicker(true);
+  const ctx = timeContext(mode);
+  const current = kind === "advance" ? (ctx.advance.value || ctx.due.value) : ctx.due.value;
+  const parsed = parseClock(current) || { hour: 9, minute: 0 };
+  timePick = {
+    mode,
+    kind,
+    anchor,
+    hour: parsed.hour,
+    minute: parsed.minute,
+  };
+  el.timePopLabel.textContent = kind === "advance" ? "提前提醒时间" : "任务时间";
+  if (mode === "edit") {
+    el.editDialog.appendChild(el.timePop);
+    el.editDialog.classList.add("time-pop-open");
+  } else {
+    document.body.appendChild(el.timePop);
+    el.editDialog.classList.remove("time-pop-open");
+  }
+  el.timePop.hidden = false;
+  anchor.setAttribute("aria-expanded", "true");
+  renderTimePicker();
+  if (mode !== "edit") positionTimePicker(anchor);
+  requestAnimationFrame(() => {
+    el.timePop.classList.add("is-open");
+    scrollTimeColumns();
+  });
+}
+
 function resetComposer() {
   el.newTitle.value = "";
   el.newNotes.value = "";
   el.newNotesWrap.hidden = true;
   el.notesToggle.setAttribute("aria-expanded", "false");
+  el.newTime.value = "";
+  el.newAdvance.value = "";
+  el.newAdvanceOn.checked = false;
+  el.newTimeWrap.hidden = true;
+  el.timeToggle.setAttribute("aria-expanded", "false");
+  el.newRemind.checked = true;
+  el.newRemind.disabled = true;
+  updateTimeUI("new");
 }
 
 async function addTask(event) {
@@ -1995,11 +2550,19 @@ async function addTask(event) {
         title,
         notes: el.newNotes.value,
         task_date: state.selected,
+        due_time: el.newTime.value || null,
+        remind: Boolean(el.newTime.value && el.newRemind.checked),
+        advance_time: el.newAdvanceOn.checked
+          && el.newAdvance.value
+          && el.newAdvance.value < el.newTime.value
+          ? el.newAdvance.value
+          : null,
       }),
     });
     resetComposer();
     state.animateNext = true;
     await refreshAll();
+    notifyReminderHost();
     sfx("task-add");
     toast("已添加", "success");
     el.newTitle.focus();
@@ -2037,6 +2600,8 @@ async function toggleTask(id) {
     renderTasks();
     updateDayHeader();
     loadMonth();
+    refreshPlansForLinkedTask(id);
+    notifyReminderHost();
     sfx(updated.status === "done" ? "task-done" : "task-open");
   } catch (error) {
     if (state.selected === day) {
@@ -2047,6 +2612,72 @@ async function toggleTask(id) {
   } finally {
     state.pendingToggles.delete(id);
   }
+}
+
+function syncEditDateField() {
+  const value = el.editDate.value;
+  el.editDateText.textContent = value ? fmtPlanDate(value) : "选择日期";
+  el.editDateText.classList.toggle("is-empty", !value);
+}
+
+function closeEditDatePopover(immediate = false) {
+  clearTimeout(editDateHideTimer);
+  el.editDialog.classList.remove("date-pop-open");
+  el.editDateBtn.setAttribute("aria-expanded", "false");
+  if (el.editDatePop.hidden) return;
+  el.editDatePop.classList.remove("is-open");
+  if (immediate) {
+    el.editDatePop.hidden = true;
+    return;
+  }
+  editDateHideTimer = setTimeout(() => {
+    if (!el.editDatePop.classList.contains("is-open")) el.editDatePop.hidden = true;
+  }, 260);
+}
+
+function renderEditDatePopover() {
+  if (!editDateView) return;
+  const { year, month } = editDateView;
+  el.editDateLabel.textContent = `${year}年${month + 1}月`;
+  const first = new Date(year, month, 1);
+  const offset = (first.getDay() + 6) % 7;
+  const start = new Date(year, month, 1 - offset);
+  const selected = el.editDate.value;
+  const today = toISO(new Date());
+  const fragment = document.createDocumentFragment();
+  for (let i = 0; i < 42; i += 1) {
+    const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    const iso = toISO(day);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.editDatePick = iso;
+    button.textContent = String(day.getDate());
+    if (day.getMonth() !== month) button.classList.add("is-outside");
+    if (iso === today) button.classList.add("is-today");
+    if (iso === selected) button.classList.add("is-selected");
+    fragment.appendChild(button);
+  }
+  el.editDateGrid.replaceChildren(fragment);
+}
+
+function openEditDatePopover() {
+  if (timePick) closeTimePicker(true);
+  const anchor = el.editDate.value ? fromISO(el.editDate.value) : new Date();
+  editDateView = { year: anchor.getFullYear(), month: anchor.getMonth() };
+  renderEditDatePopover();
+  clearTimeout(editDateHideTimer);
+  el.editDatePop.hidden = false;
+  void el.editDatePop.offsetWidth;
+  el.editDatePop.classList.add("is-open");
+  el.editDateBtn.setAttribute("aria-expanded", "true");
+  el.editDialog.classList.add("date-pop-open");
+}
+
+function setEditDate(iso) {
+  el.editDate.value = iso || "";
+  syncEditDateField();
+  syncDateChips();
+  closeEditDatePopover();
 }
 
 function syncDateChips() {
@@ -2061,11 +2692,19 @@ function syncDateChips() {
 function openEdit(id) {
   const task = state.tasks.find((item) => item.id === id);
   if (!task) return;
+  if (timePick) closeTimePicker(true);
+  closeEditDatePopover(true);
 
   state.editingId = id;
   el.editTitle.value = task.title;
   el.editNotes.value = task.notes || "";
+  el.editTime.value = task.due_time || "";
+  el.editAdvance.value = task.advance_time || "";
+  el.editAdvanceOn.checked = Boolean(task.due_time && task.advance_time);
+  el.editRemind.checked = Boolean(task.due_time && task.remind);
   el.editDate.value = task.task_date;
+  updateTimeUI("edit");
+  syncEditDateField();
   syncDateChips();
   el.editMeta.textContent = `创建于 ${fmtStamp(task.created_at)}${task.completed_at ? ` · 完成于 ${fmtStamp(task.completed_at)}` : ""}`;
 
@@ -2085,6 +2724,10 @@ async function saveEdit(event) {
     el.editTitle.focus();
     return;
   }
+  if (!el.editDate.value) {
+    toast("请选择归入日期", "error");
+    return;
+  }
 
   const submitButton = el.editForm.querySelector('button[type="submit"]');
   submitButton.disabled = true;
@@ -2095,10 +2738,20 @@ async function saveEdit(event) {
         title,
         notes: el.editNotes.value,
         task_date: el.editDate.value,
+        due_time: el.editTime.value || null,
+        remind: Boolean(el.editTime.value && el.editRemind.checked),
+        advance_time: el.editAdvanceOn.checked
+          && el.editAdvance.value
+          && el.editAdvance.value < el.editTime.value
+          ? el.editAdvance.value
+          : null,
       }),
     });
+    closeTimePicker(true);
     el.editDialog.close();
     await refreshAll();
+    notifyReminderHost();
+    refreshPlansForLinkedTask(state.editingId);
     if (updated.task_date !== state.selected) {
       const moved = fromISO(updated.task_date);
       toast(`已移动到 ${moved.getMonth() + 1}月${moved.getDate()}日`);
@@ -2144,6 +2797,8 @@ async function confirmDelete() {
     await api(`/api/tasks/${state.deletingId}`, { method: "DELETE" });
     el.confirmDialog.close();
     await refreshAll();
+    refreshPlansForLinkedTask(state.deletingId);
+    notifyReminderHost();
     sfx("task-delete");
     toast("已删除", "success");
   } catch (error) {
@@ -2309,6 +2964,22 @@ el.planEditDelete.addEventListener("click", () => {
   const id = state.planEditingId;
   el.planDialog.close();
   if (id != null) openPlanDelete(id);
+});
+
+el.planEditTask.addEventListener("change", () => {
+  if (el.planEditTask.dataset.ready !== "1") return;
+  const task = planTaskOptions.find(
+    (item) => String(item.id) === el.planEditTask.value,
+  );
+  if (task) {
+    el.planEditDate.value = task.task_date;
+    syncPlanDateField();
+    setPlanDateDisabled(true);
+    el.planLinkHint.textContent = `关联「${task.title}」，日期与完成状态跟随该任务。`;
+  } else {
+    setPlanDateDisabled(false);
+    el.planLinkHint.textContent = "关联后完成状态与任务同步，不再单独出现在日程中。";
+  }
 });
 
 el.planDateBtn.addEventListener("click", () => {
@@ -2576,6 +3247,109 @@ el.notesToggle.addEventListener("click", () => {
   if (!expanded) el.newNotes.focus();
 });
 
+el.timeToggle.addEventListener("click", () => {
+  const expanded = el.timeToggle.getAttribute("aria-expanded") === "true";
+  el.timeToggle.setAttribute("aria-expanded", String(!expanded));
+  el.newTimeWrap.hidden = expanded;
+  if (!expanded) {
+    updateTimeUI("new");
+    el.newTimeBtn.focus();
+  }
+});
+
+el.newTimeBtn.addEventListener("click", () => openTimePicker("new", "due", el.newTimeBtn));
+el.newAdvanceBtn.addEventListener("click", () => openTimePicker("new", "advance", el.newAdvanceBtn));
+el.editTimeBtn.addEventListener("click", () => openTimePicker("edit", "due", el.editTimeBtn));
+el.editAdvanceBtn.addEventListener("click", () => openTimePicker("edit", "advance", el.editAdvanceBtn));
+
+el.editDateBtn.addEventListener("click", () => {
+  if (el.editDatePop.classList.contains("is-open")) closeEditDatePopover();
+  else openEditDatePopover();
+});
+
+el.editDatePop.addEventListener("click", (event) => {
+  if (event.target.closest("[data-edit-date-prev]")) {
+    editDateView.month -= 1;
+    if (editDateView.month < 0) {
+      editDateView.month = 11;
+      editDateView.year -= 1;
+    }
+    renderEditDatePopover();
+    return;
+  }
+  if (event.target.closest("[data-edit-date-next]")) {
+    editDateView.month += 1;
+    if (editDateView.month > 11) {
+      editDateView.month = 0;
+      editDateView.year += 1;
+    }
+    renderEditDatePopover();
+    return;
+  }
+  if (event.target.closest("[data-edit-date-today]")) {
+    setEditDate(toISO(new Date()));
+    return;
+  }
+  const day = event.target.closest("button[data-edit-date-pick]");
+  if (day) setEditDate(day.dataset.editDatePick);
+});
+
+document.addEventListener("pointerdown", (event) => {
+  if (el.editDatePop.hidden) return;
+  if (el.editDatePop.contains(event.target) || event.target.closest("#edit-date-btn")) return;
+  closeEditDatePopover();
+});
+
+el.newAdvanceOn.addEventListener("change", () => toggleAdvance("new", el.newAdvanceOn.checked));
+el.editAdvanceOn.addEventListener("change", () => toggleAdvance("edit", el.editAdvanceOn.checked));
+
+el.timeHours.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-hour]");
+  if (!button || button.disabled || !timePick) return;
+  timePick.hour = Number(button.dataset.hour);
+  if (timePick.kind === "advance") {
+    const dueMinutes = clockMinutes(timeContext(timePick.mode).due.value);
+    if (dueMinutes != null && timePick.hour * 60 + timePick.minute >= dueMinutes) {
+      timePick.minute = Math.max(0, dueMinutes - timePick.hour * 60 - 1);
+    }
+  }
+  renderTimePicker();
+  applyTimeDraft();
+});
+
+el.timeMinutes.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-minute]");
+  if (!button || button.disabled || !timePick) return;
+  timePick.minute = Number(button.dataset.minute);
+  renderTimePicker();
+  applyTimeDraft();
+});
+
+el.timePop.addEventListener("click", (event) => {
+  if (event.target.closest("[data-time-close]") || event.target.closest("[data-time-done]")) {
+    closeTimePicker();
+    return;
+  }
+  if (event.target.closest("[data-time-clear]")) {
+    if (timePick) {
+      const { mode, kind } = timePick;
+      if (kind === "advance") setAdvanceTime(mode, "");
+      else setDueTime(mode, "");
+    }
+    closeTimePicker();
+  }
+});
+
+document.addEventListener("pointerdown", (event) => {
+  if (el.timePop.hidden || !timePick) return;
+  if (el.timePop.contains(event.target) || event.target.closest(".time-pick")) return;
+  closeTimePicker();
+});
+
+window.addEventListener("resize", () => {
+  if (timePick) closeTimePicker();
+});
+
 el.composer.addEventListener("submit", addTask);
 
 el.newTitle.addEventListener("keydown", (event) => {
@@ -2594,13 +3368,21 @@ el.newNotes.addEventListener("keydown", (event) => {
 
 el.editForm.addEventListener("submit", saveEdit);
 
+el.editDialog.addEventListener("close", () => {
+  if (timePick) closeTimePicker(true);
+  closeEditDatePopover(true);
+  el.editDialog.classList.remove("time-pop-open");
+});
+
 el.editDateChips.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-days]");
   if (!button) return;
   const target = new Date();
   target.setDate(target.getDate() + Number(button.dataset.days));
   el.editDate.value = toISO(target);
+  syncEditDateField();
   syncDateChips();
+  closeEditDatePopover(true);
 });
 
 el.editDate.addEventListener("change", syncDateChips);
@@ -2660,6 +3442,11 @@ el.confirmDialog.addEventListener("close", () => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && (timePick || !el.editDatePop.hidden)) {
+    if (timePick) closeTimePicker();
+    if (!el.editDatePop.hidden) closeEditDatePopover();
+    return;
+  }
   if (event.ctrlKey || event.metaKey || event.altKey) return;
   if (state.calendarPick && event.key === "Escape") {
     event.preventDefault();
@@ -2717,6 +3504,7 @@ function init() {
   loadMonth();
   loadTasks();
   loadPlans();
+  if (!desktopBridge) startReminderLoop();
 }
 
 init();

@@ -106,11 +106,32 @@
 
       <form class="composer" id="composer" autocomplete="off">
         <input id="new-title" type="text" maxlength="120" placeholder="添加任务，回车保存…" aria-label="新任务内容">
+        <button class="notes-toggle time-toggle" id="time-toggle" type="button" aria-expanded="false" aria-controls="new-time-wrap">时间</button>
         <button class="notes-toggle" id="notes-toggle" type="button" aria-expanded="false" aria-controls="new-notes-wrap">备注</button>
         <button class="add-btn" id="add-btn" type="submit" aria-label="添加任务">
           <svg viewBox="0 0 20 20" fill="none"><path d="M10 4.5v11M4.5 10h11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </button>
       </form>
+      <div class="composer-time" id="new-time-wrap" hidden>
+        <div class="time-line">
+          <span class="time-label">时间</span>
+          <button class="time-pick" id="new-time-btn" type="button" aria-haspopup="dialog">选择时间</button>
+          <input id="new-time" type="hidden" value="">
+          <label class="remind-check">
+            <input id="new-remind" type="checkbox" checked>
+            <span>到点提醒</span>
+          </label>
+        </div>
+        <div class="time-line">
+          <label class="remind-check">
+            <input id="new-advance-on" type="checkbox">
+            <span>提前提醒</span>
+          </label>
+          <button class="time-pick" id="new-advance-btn" type="button" aria-haspopup="dialog" disabled>选择时间</button>
+          <input id="new-advance" type="hidden" value="">
+          <span class="time-note" id="new-advance-note"></span>
+        </div>
+      </div>
       <div class="composer-notes" id="new-notes-wrap" hidden>
         <textarea id="new-notes" rows="2" maxlength="5000" placeholder="备注（可选）：补充细节、链接或检查项"></textarea>
       </div>
@@ -219,9 +240,36 @@
         <textarea id="edit-notes" rows="4" maxlength="5000" placeholder="补充细节、链接或检查项"></textarea>
       </label>
       <div class="field">
+        <span>时间</span>
+        <div class="time-row">
+          <button class="time-pick" id="edit-time-btn" type="button" aria-haspopup="dialog">选择时间</button>
+          <input id="edit-time" type="hidden" value="">
+          <label class="remind-check">
+            <input id="edit-remind" type="checkbox" checked>
+            <span>到点提醒</span>
+          </label>
+        </div>
+        <div class="time-row advance-row">
+          <label class="remind-check">
+            <input id="edit-advance-on" type="checkbox">
+            <span>提前提醒</span>
+          </label>
+          <button class="time-pick" id="edit-advance-btn" type="button" aria-haspopup="dialog" disabled>选择时间</button>
+          <input id="edit-advance" type="hidden" value="">
+          <span class="time-note" id="edit-advance-note"></span>
+        </div>
+      </div>
+      <div class="field">
         <span>归入日期</span>
         <div class="date-row">
-          <input id="edit-date" type="date" required aria-label="归入日期">
+          <div class="date-field edit-date-field">
+            <button class="date-field-btn" id="edit-date-btn" type="button" aria-haspopup="dialog" aria-expanded="false">
+              <svg class="date-field-calendar" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3.5" y="4.5" width="13" height="11" rx="2.5" stroke="currentColor" stroke-width="1.4"/><path d="M3.5 8.5h13M7 3.2v2.4M13 3.2v2.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              <span id="edit-date-text">11月12日 · 周四</span>
+              <svg class="date-field-caret" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M6.5 8l3.5 3.5L13.5 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+          <input id="edit-date" type="hidden" value="">
           <div class="date-chips" id="edit-date-chips" role="group" aria-label="快捷日期">
             <button type="button" data-days="0">今天</button>
             <button type="button" data-days="1">明天</button>
@@ -237,6 +285,25 @@
         <button class="btn-primary" type="submit">保存</button>
       </div>
     </form>
+
+    <div class="date-pop" id="edit-date-pop" role="dialog" aria-label="选择日期" hidden>
+      <div class="date-pop-head">
+        <button type="button" class="icon-btn" data-edit-date-prev aria-label="上个月">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M12.5 5l-5 5 5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <strong id="edit-date-label"></strong>
+        <button type="button" class="icon-btn" data-edit-date-next aria-label="下个月">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M7.5 5l5 5-5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <div class="date-pop-week" aria-hidden="true">
+        <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+      </div>
+      <div class="date-pop-grid" id="edit-date-grid"></div>
+      <div class="date-pop-foot">
+        <button type="button" class="btn-text" data-edit-date-today>今天</button>
+      </div>
+    </div>
   </dialog>
 
   <dialog id="plan-dialog" aria-labelledby="plan-dialog-heading">
@@ -262,6 +329,11 @@
         </div>
       </div>
       <input id="plan-edit-date" type="hidden" value="">
+      <div class="field">
+        <span>关联已有任务</span>
+        <select id="plan-edit-task" aria-label="关联已有任务"></select>
+      </div>
+      <p class="field-hint" id="plan-link-hint">关联后完成状态与任务同步，不再单独出现在日程中。</p>
       <p class="edit-meta" id="plan-edit-meta"></p>
       <div class="modal-actions">
         <button class="btn-text danger" id="plan-edit-delete" type="button">删除计划</button>
@@ -306,13 +378,43 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <div class="corner-toast" id="plan-complete-toast" role="status" aria-live="polite">
-    <span class="corner-toast-mark">
-      <svg viewBox="0 0 20 20" fill="none"><path d="M5 10.5l3.2 3.2L15 7" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </span>
-    <div class="corner-toast-body">
-      <span class="corner-toast-eyebrow">计划完成</span>
-      <p id="plan-complete-text"></p>
+  <div class="corner-stack">
+    <div class="corner-toast" id="plan-complete-toast" role="status" aria-live="polite">
+      <span class="corner-toast-mark">
+        <svg viewBox="0 0 20 20" fill="none"><path d="M5 10.5l3.2 3.2L15 7" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+      <div class="corner-toast-body">
+        <span class="corner-toast-eyebrow">计划完成</span>
+        <p id="plan-complete-text"></p>
+      </div>
+    </div>
+    <div class="corner-toast remind-toast" id="task-remind-toast" role="status" aria-live="polite">
+      <span class="corner-toast-mark">
+        <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="6.3" stroke="currentColor" stroke-width="1.6"/><path d="M10 6.4V10l2.6 1.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+      <div class="corner-toast-body">
+        <span class="corner-toast-eyebrow" id="task-remind-eyebrow">日程提醒</span>
+        <p id="task-remind-text"></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="time-pop" id="time-pop" hidden role="dialog" aria-label="选择时间">
+    <div class="time-pop-head">
+      <strong id="time-pop-label">选择时间</strong>
+      <button class="time-pop-close" type="button" data-time-close aria-label="关闭">
+        <svg viewBox="0 0 20 20" fill="none"><path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="time-pop-cols">
+      <div class="time-col" id="time-hours" role="listbox" aria-label="小时"></div>
+      <div class="time-col" id="time-minutes" role="listbox" aria-label="分钟"></div>
+    </div>
+    <div class="time-pop-foot">
+      <span id="time-pop-hint"></span>
+      <span class="spacer"></span>
+      <button class="time-pop-text" type="button" data-time-clear>清除</button>
+      <button class="time-pop-done" type="button" data-time-done>完成</button>
     </div>
   </div>
 

@@ -92,6 +92,9 @@ internal sealed class MainWindow : Form
                 case "show-drawer":
                     _app.EnterDrawer();
                     break;
+                case "refresh-reminders":
+                    _app.RefreshReminderTasks();
+                    break;
                 case "quit":
                     _app.ExitApp();
                     break;
@@ -100,6 +103,32 @@ internal sealed class MainWindow : Form
         catch
         {
             // Ignore malformed messages from the page.
+        }
+    }
+
+    public void PlayReminderChime()
+    {
+        try
+        {
+            _web.CoreWebView2?.ExecuteScriptAsync(
+                "window.taskdrawReminderChime && window.taskdrawReminderChime()");
+        }
+        catch
+        {
+            // The main window may be shutting down.
+        }
+    }
+
+    public void RefreshFromReminder()
+    {
+        try
+        {
+            _web.CoreWebView2?.ExecuteScriptAsync(
+                "window.taskdrawRefresh && window.taskdrawRefresh()");
+        }
+        catch
+        {
+            // The main window may be shutting down.
         }
     }
 

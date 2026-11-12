@@ -541,6 +541,30 @@ body.all-done .progress span {
   text-decoration-thickness: 1.5px;
 }
 
+.task-time {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: #f1ebdf;
+  border-radius: 5px;
+  vertical-align: 1px;
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+}
+
+.task-time.is-remind {
+  color: var(--accent-deep);
+  background: var(--accent-soft);
+}
+
+.task.done .task-time {
+  color: var(--faint);
+  background: #f4f0e7;
+}
+
 .task-notes {
   margin: 2px 0 0;
   font-size: 11.5px;

@@ -167,6 +167,12 @@
         tone({ freq: note(midi), start: 0.06 + index * 0.07, duration: 0.22, gain: 0.05 });
       });
     },
+    "task-remind": () => {
+      tone({ freq: note(88), start: 0, duration: 0.5, gain: 0.05 });
+      tone({ freq: note(95), start: 0.16, duration: 0.62, gain: 0.045 });
+      tone({ freq: note(100), start: 0.34, duration: 0.76, gain: 0.035 });
+      tone({ freq: note(76), start: 0.34, duration: 0.5, type: "triangle", gain: 0.03 });
+    },
     "page-turn": () => {
       noise({ start: 0, duration: 0.14, gain: 0.07, from: 2600, to: 700, q: 0.6 });
       tone({ freq: note(72), start: 0.02, duration: 0.1, gain: 0.04, slideTo: note(76) });

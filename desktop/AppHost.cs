@@ -9,6 +9,7 @@ internal sealed class AppHost : IDisposable
     private CoreWebView2Environment? _environment;
     private MainWindow? _main;
     private DrawerWindow? _drawer;
+    private ReminderScheduler? _reminders;
     private NotifyIcon? _tray;
     private Icon? _trayIcon;
     private bool _cleaned;
@@ -29,10 +30,12 @@ internal sealed class AppHost : IDisposable
 
             _main = new MainWindow(this, _environment, _server.BaseUrl);
             _drawer = new DrawerWindow(this, _environment, _server.BaseUrl);
+            _reminders = new ReminderScheduler(this, _main, _environment, _server.BaseUrl);
             SetupTray();
 
             Application.ApplicationExit += (_, _) => Cleanup();
             _main.Show();
+            _reminders.Start();
             Application.Run(_main);
         }
         finally
@@ -78,6 +81,22 @@ internal sealed class AppHost : IDisposable
         _main?.ShowMain();
     }
 
+    public void RefreshReminderTasks()
+    {
+        _reminders?.RefreshNow();
+    }
+
+    public void PlayReminderChime()
+    {
+        _main?.PlayReminderChime();
+    }
+
+    public void RefreshMainFromReminder()
+    {
+        _main?.RefreshFromReminder();
+        RefreshReminderTasks();
+    }
+
     public void ExitApp()
     {
         if (IsExiting)
@@ -89,6 +108,7 @@ internal sealed class AppHost : IDisposable
         {
             _tray.Visible = false;
         }
+        _reminders?.Dispose();
         _drawer?.CloseForExit();
         _main?.CloseForExit();
         Application.Exit();
@@ -159,6 +179,7 @@ internal sealed class AppHost : IDisposable
 
         _trayIcon?.Dispose();
         _trayIcon = null;
+        _reminders?.Dispose();
         _server.Dispose();
     }
 

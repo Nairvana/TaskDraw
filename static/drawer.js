@@ -227,6 +227,13 @@ function buildTask(task, index = 0, animate = false) {
   const title = document.createElement("p");
   title.className = "task-title";
   title.textContent = task.title;
+  if (task.due_time) {
+    const time = document.createElement("span");
+    time.className = task.remind ? "task-time is-remind" : "task-time";
+    time.textContent = task.due_time;
+    time.title = task.remind ? "已设置到点提醒" : "任务时间";
+    title.appendChild(time);
+  }
   body.appendChild(title);
 
   if (task.notes) {
@@ -301,6 +308,7 @@ async function addTask(event) {
       body: JSON.stringify({ title, notes: "", task_date: todayISO() }),
     });
     el.input.value = "";
+    post("refresh-reminders");
     await refresh({ force: true });
     el.input.focus();
   } catch (error) {
@@ -339,6 +347,7 @@ async function toggleTask(id) {
     if (index !== -1) state.tasks[index] = updated;
     render();
     state.justDoneId = null;
+    post("refresh-reminders");
     el.sync.textContent = "刚刚已同步";
     el.sync.style.color = "";
   } catch (error) {
