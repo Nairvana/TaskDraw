@@ -796,6 +796,10 @@ body.is-collapsed .drawer {
   box-shadow: -10px 0 28px -22px rgba(62, 46, 30, 0.55);
 }
 
+body.is-collapsed .drawer::before {
+  display: none;
+}
+
 body.is-collapsed .head,
 body.is-collapsed .add-form,
 body.is-collapsed .task-list,
